@@ -1,0 +1,207 @@
+---
+title: "Assignment-2-Madhur-Thakur"
+format:
+  html:
+    df-print: paged
+    embed-resources: true
+editor: visual
+---
+
+
+
+```{r}
+#| results: hide
+#| message: false
+library(tidyverse)
+library(tidymodels)
+df_stroke <- read_csv('stroke (1).csv')
+```
+
+```{r}
+model_1 <- glm(stroke ~ heart_disease + hypertension + smoking_status,
+               data = df_stroke,
+               family = 'binomial')
+
+model_2 = glm(stroke ~ heart_disease + hypertension + smoking_status + age + avg_glucose_level + bmi,
+              data = df_stroke,
+              family = 'binomial')
+
+tidy_model_2 <- model_2 |> 
+  tidy()
+
+prediction_1 <- predict(model_1, type = 'response')
+prediction_2 <- predict(model_2, type = 'response')
+
+df_pred_1 <- data.frame(prediction_1)
+
+df_pred_prob <- df_stroke |> 
+  mutate(pred_prob_1 = predict(model_1, type = 'response'),
+         pred_prob_2 = predict(model_2, type = 'response')) |> 
+  select(stroke, pred_prob_1, pred_prob_2)
+glimpse(df_pred_prob)
+
+ggplot(df_pred_prob, aes(x = pred_prob_1, fill = factor(stroke))) +
+  geom_density(alpha = 0.5) +
+  xlim(0,1) +
+  scale_fill_discrete(name = 'stroke',
+                      labels = c('No', 'Yes')) +
+  labs(title = "Distribution of Predicted Probabilities (Model 1)",
+       x = "Predicted Probability",
+       y = "Density") 
+
+
+ggplot(df_pred_prob, aes(x = pred_prob_2, fill = factor(stroke))) +
+  geom_density(alpha = 0.5) +
+  xlim(0,1) +
+  scale_fill_discrete(name = 'stroke',
+                      labels = c('No', 'Yes')) +
+  labs(title = "Distribution of Predicted Probabilities (Model 2)",
+       x = "Predicted Probability",
+       y = "Density") 
+
+# Table 
+df_res <-df_pred_prob |> 
+  group_by(stroke) |> 
+  summarize(Model1_Mean = mean(pred_prob_1),
+            Model2_Mean = mean(pred_prob_2),
+            Model1_Median = median(pred_prob_1),
+            Model2_Median = median(pred_prob_2),
+            Model1_sd = sd(pred_prob_1),
+            Model2_sd = sd(pred_prob_2))
+df_res
+```
+
+
+
+```{r}
+
+model_3 <- glm(stroke~ heart_disease + hypertension + +ever_married + work_type + Residence_type + smoking_status + age +gender + avg_glucose_level + bmi,
+               data = df_stroke,
+               family = 'binomial')
+
+df_stroke$predictions_3 <- predict(model_3, type = 'response')
+
+df_stroke |> 
+  select(stroke, predictions_3) |> 
+  ggplot(aes(x = predictions_3 , fill = factor(stroke))) +
+  geom_density(alpha = 0.5) +
+  xlim(0,1) +
+  scale_fill_discrete(name = 'stroke',
+                      labels = c('No', 'Yes')) +
+  labs(title = 'probability distribution for Model 3',
+       x = 'predicted probability',
+       y = 'density')
+
+# table 
+df_stroke |> 
+  group_by(stroke) |> 
+  summarize(model_3_mean = mean(predictions_3),
+            model_3_median = median(predictions_3),
+            model_3_std = sd(predictions_3))
+
+```
+
+
+```{r}
+df_stroke |> 
+  summarize(max(age))
+
+# Less than 50 age 
+
+filter_less_50_data <- df_stroke |> 
+  filter(age <= 50) 
+
+filter_less_50_data <- filter_less_50_data |> 
+  mutate(pred_less_50 = predict(model_3, newdata = filter_less_50_data, type = 'response'))
+  
+ggplot(filter_less_50_data, aes(x = pred_less_50, fill = factor(stroke))) +
+geom_density(alpha = 0.5) +
+xlim(0,1) +
+scale_fill_discrete(name = 'stroke',
+                    labels = c('No', 'Yes')) +
+labs(title = 'Prediction probability for age less than  or equal to 50')
+
+# More than 50 age
+
+filter_more_50 <- df_stroke |> 
+  filter(age > 50)
+
+filter_more_50 <- filter_more_50 |> 
+  mutate(pred_more_50 = predict(model_3, newdata = filter_more_50, type = 'response'))
+
+ggplot(filter_more_50, aes(x = pred_more_50, fill = factor(stroke))) +
+geom_density(alpha = 0.5) +
+xlim(0,1) +
+labs(title = 'Prediction probabiltiy for age More than 50')
+
+filter_more_50 |> 
+  group_by(stroke) |> 
+  summarize(mean = mean(pred_more_50),
+            median = median(pred_more_50),
+            std = sd(pred_more_50))
+
+filter_less_50_data |> 
+  group_by(stroke) |> 
+  summarize(mean = mean(pred_less_50),
+            median = median(pred_less_50),
+            std = sd(pred_less_50))
+```
+
+
+```{r}
+# cutpoints for age
+cutpoints <- c(15, 30, 45, 60, 75)
+
+results <- data.frame(
+  Age_Group = character(),
+  N_in_group = integer(),
+  Prob_of_stroke = double()
+)
+
+for (cutpoint in cutpoints) {
+  df_stroke_q4 <- df_stroke %>%
+    mutate(Age_Group = ifelse(age > cutpoint, paste0(">", cutpoint), paste0("<=", cutpoint)))
+  
+  prevalence <- df_stroke_q4 %>%
+    group_by(Age_Group) %>%
+    summarise(N_in_group = n(),
+              Prob_of_stroke = sum(stroke) / n())
+  
+  results <- rbind(results, prevalence)
+}
+
+print(results)
+
+
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+stroke_tree <- rpart(stroke ~ gender + age + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status, 
+                     data = df_stroke)
+
+rpart.plot(stroke_tree)
+
+df_stroke$pred_stroke <- predict(stroke_tree)
+
+
+ggplot(df_stroke, aes(x = pred_stroke, fill = factor(stroke))) +
+  geom_density(alpha = 0.5) +
+  xlim(0,1) +
+  scale_fill_discrete(name = 'stroke',
+                      labels = c('No', 'Yes')) +
+  labs(title = "Distribution of Predicted Probabilities (Decision tree)",
+       x = "Predicted Probability",
+       y = "Density") 
+
+df_stroke |> 
+  group_by(stroke) |> 
+  summarize(mean = mean(pred_stroke),
+            median = median(pred_stroke),
+            std = sd(pred_stroke))
+
+```
+
